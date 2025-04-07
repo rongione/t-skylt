@@ -19,6 +19,9 @@ def preload_departures(site_id):
     departures = []
     now = datetime.now() + timedelta(hours=1)
 
+    # Extract stop-level deviations
+    stop_deviations = [d["message"] for d in data.get("stop_deviations", [])]
+
     if 'departures' in data:
         for dep in data['departures']:
             line = dep.get("line", {}).get("designation", "–")
@@ -59,41 +62,7 @@ def preload_departures(site_id):
                     "datetime": dep_datetime,
                 })
 
-    return sorted(departures, key=lambda x: x['datetime'])
-
-# Function to extract first deviation message
-def preload_deviations(site_id=9184):
-    url = "https://deviations.integration.sl.se/v1/messages"
-    params = {
-        "future": "false",
-        "site": [site_id], # Tallkrogen
-        "transport_mode": ["METRO"]
-    }
-    try:
-        response = requests.get(url, params=params, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as e:
-        print(f"Error fetching deviations: {e}")
-        return []
-
-    deviations = []
-
-    if isinstance(data, list):
-        for deviation in data:
-            message_variant = next(
-                (v for v in deviation.get("message_variants", []) if v.get("language") == "sv"),
-                None
-            )
-
-            if message_variant:
-                details = message_variant.get("details", "No details")
-                deviations.append({
-                    "details": details,
-                    "datetime": datetime.now()  # For simplicity, add current time
-                })
-
-        return deviations
+    return sorted(departures, key=lambda x: x['datetime']), stop_deviations
 
 def get_temperature(latitude, longitude):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -125,11 +94,11 @@ class RunText(SampleBase):
 
         # Mer gul
         #textColor = graphics.Color(244, 64, 255)
-        #staticTextColor = graphics.Color(244, 64, 255)
+        #tempColor = graphics.Color(244, 64, 255)
 
         # Mer orange
         textColor = graphics.Color(135, 20, 216)
-        staticTextColor = graphics.Color(135, 20, 216)
+        timeColor = graphics.Color(135, 20, 216)
 
         # Koordinater för Tallkrogen
         latitude = 59.2636
@@ -165,8 +134,8 @@ class RunText(SampleBase):
             time.sleep(0.4)
 
         # Cache setup
-        departure_cache = preload_departures(site_id)
-        deviation_cache = preload_deviations()
+        departure_cache, deviation_cache = preload_departures(site_id)
+        # deviation_cache = preload_deviations()
         last_cache_update = time.monotonic()
         cache_refresh_interval = 300  # refresh every 5 minutes
 
@@ -181,7 +150,7 @@ class RunText(SampleBase):
             for d in departures:
                 minutes_left = math.ceil((d["datetime"] - now).total_seconds() / 60)
                 if minutes_left > 0:
-                    time_display = f"{minutes_left} min" if minutes_left <= 30 else d["datetime"].strftime("%H:%M")
+                    time_display = f"{minutes_left} min" if minutes_left < 30 else d["datetime"].strftime("%H:%M")
                     upcoming.append({
                         "route": d["route"],
                         "destination": d["destination"],
@@ -192,23 +161,10 @@ class RunText(SampleBase):
 
             return "   ".join(
                 [f"{d['route']} {d['destination']} {d['time']}" for d in upcoming]
-            ) or "No departures"
+            ) or " "
 
         def format_deviations(deviations, max_results=4):
-            upcoming = []
-
-            for d in deviations:
-                #details = d["details"].split('.')[0]  # Split at the first period and take the first part
-                details = d["details"]
-                upcoming.append({
-                    "details": details
-                })
-                if len(upcoming) >= max_results:
-                    break
-
-            return "   ".join(
-                [f"{d['details']}" for d in upcoming]
-            ) or "No deviations"
+            return "   ".join(deviations[:max_results]) or " "
 
 
         # ---------- MAIN LOOP ----------
@@ -217,17 +173,17 @@ class RunText(SampleBase):
 
             # Clock
             now = datetime.now() + timedelta(hours=1)
-            staticText = now.strftime("%H:%M")
+            timeText = now.strftime("%H:%M")
             clock_x = 0
-            graphics.DrawText(offscreen_canvas, staticFont, clock_x, 12, staticTextColor, staticText)
+            graphics.DrawText(offscreen_canvas, staticFont, clock_x, 12, timeColor, timeText)
 
             # Temperature
             temp_text = f"{current_temperature}°" if current_temperature else "–°"
             temp_x = 50 if len(temp_text) == 2 else 44
-            graphics.DrawText(offscreen_canvas, staticFont, temp_x, 12, staticTextColor, temp_text)
+            graphics.DrawText(offscreen_canvas, staticFont, temp_x, 12, timeColor, temp_text)
 
             # Decide what text to show
-            if not showing_deviation and scroll_cycle >= 4 and deviation_cache:
+            if not showing_deviation and scroll_cycle >= 3 and deviation_cache:
                 showing_deviation = True
                 scroll_cycle = 0  # reset counter when switching to deviation
 
@@ -253,16 +209,13 @@ class RunText(SampleBase):
                 if time.monotonic() - last_cache_update > cache_refresh_interval or \
                         (departure_cache and (departure_cache[-1]["datetime"] - now).total_seconds() < 1800) or \
                         (deviation_cache and len(deviation_cache) == 0):  # refresh if no deviations
-                    print("Refreshing data...")
 
                     # Fetch updated data
-                    updated_departures = preload_departures(site_id)
-                    updated_deviations = preload_deviations()
+                    updated_departures, updated_deviations = preload_departures(site_id)
 
                     if updated_departures:
                         departure_cache = updated_departures
-
-                    deviation_cache = updated_deviations
+                        deviation_cache = updated_deviations
 
                     last_cache_update = time.monotonic()
 
@@ -272,7 +225,6 @@ class RunText(SampleBase):
                     last_checked_hour = current_hour
                     target_brightness = night_brightness if (23 <= current_hour or current_hour < 7) else day_brightness
                     self.matrix.brightness = target_brightness
-                    last_temp_update = current_hour
                     temp = get_temperature(latitude, longitude)
                     if temp is not None:
                         current_temperature = math.floor(temp) if temp % 1 < 0.5 else round(temp)
