@@ -32,6 +32,8 @@ def preload_departures(site_id):
 
             # Filter out non-metro and cancelled departures
             is_cancelled = state == "CANCELLED" or display_time.lower() == "inställt"
+            # if is_cancelled or transport_mode != "BUS":
+            #     continue
             if is_cancelled or line == "903":
                 continue
 
@@ -104,9 +106,10 @@ class RunText(SampleBase):
         latitude = 59.2636
         longitude = 18.0868
 
-        site_id = 9184 # Tallkrogen
-        #site_id = 9287 # Skärholmen
-        #site_id = 9001 # T-Centralen
+        # site_id = 9189 # Gullmarsplan
+        # site_id = 9287 # Skärholmen
+        # site_id = 9001 # T-Centralen
+        site_id = 9184  # Tallkrogen
         scrollPos = offscreen_canvas.width
 
         # Brightness settings

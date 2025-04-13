@@ -34,8 +34,10 @@ def preload_departures(site_id):
 
             if display_time == "Nu":
                 minutes_until = 0
+                dep_datetime = now
             elif "min" in display_time:
                 minutes_until = int(display_time.split()[0])
+                dep_datetime = now + timedelta(minutes=minutes_until)
             elif display_time != "–":
                 try:
                     dep_time_today = datetime.strptime(display_time, "%H:%M")
@@ -54,6 +56,7 @@ def preload_departures(site_id):
                     "route": line,
                     "destination": destination,
                     "minutes": minutes_until,
+                    "datetime": dep_datetime,
                 })
 
     return sorted(departures, key=lambda x: x['datetime'])
@@ -66,18 +69,19 @@ class RunText(SampleBase):
         # Fonts and colors
         font = graphics.Font()
         font.LoadFont("/home/ivorongione/rpi-rgb-led-matrix/bindings/python/samples/5x3.bdf")  # 5x3 font
-        textColor = graphics.Color(135, 20, 216)
-        timeColor = graphics.Color(255, 255, 255)
+        text_color = graphics.Color(135, 20, 216)
+        time_color = graphics.Color(255, 255, 255)
 
         site_id = 9184 # Tallkrogen
-        #site_id = 9287 # Skärholmen
+        # site_id = 9189 # Gullmarsplan
+        # site_id = 9287 # Skärholmen
         # site_id = 9001 # T-Centralen
         departure_cache = preload_departures(site_id)
         last_cache_update = time.monotonic()
-        cache_refresh_interval = 300
+        cache_refresh_interval = 150
 
         # Brightness settings
-        day_brightness = 80
+        day_brightness = 70
         night_brightness = 10
         last_checked_hour = -1
 
@@ -103,6 +107,7 @@ class RunText(SampleBase):
 
             # Show next 5 departures vertically
             y_pos = 6
+            counter = 0
             for dep in valid_departures:
                 minutes_left = math.ceil((dep["datetime"] - now).total_seconds() / 60)
                 time_display = "NU" if minutes_left == 0 else f"{minutes_left}"
@@ -113,13 +118,14 @@ class RunText(SampleBase):
                     route_display = 'FARSTA STR.'
 
                 # Draw route text on the left
-                graphics.DrawText(offscreen_canvas, font, 0, y_pos, textColor, route_display)
+                graphics.DrawText(offscreen_canvas, font, 0, y_pos, text_color, route_display)
 
                 # Draw time remaining on the right
                 time_x = 59 if len(time_display) == 1 else 55 # 5 pixels per character
-                graphics.DrawText(offscreen_canvas, font, time_x, y_pos, timeColor, time_display)
+                graphics.DrawText(offscreen_canvas, font, time_x, y_pos, time_color, time_display)
 
-                y_pos += 6
+                counter += 1
+                y_pos += 6 if counter < 5 else 7
 
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
             time.sleep(1)
