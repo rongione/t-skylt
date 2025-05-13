@@ -12,6 +12,7 @@ def preload_departures(site_id):
         res = requests.get(url, timeout=5)
         res.raise_for_status()
         data = res.json()
+        print(f"API Response: {data}")  # Debugging: Log raw API response
     except Exception as e:
         print(f"Error fetching departures: {e}")
         return []
@@ -21,6 +22,7 @@ def preload_departures(site_id):
 
     # Extract stop-level deviations
     stop_deviations = [d["message"] for d in data.get("stop_deviations", [])]
+    print(f"Stop Deviations: {stop_deviations}")
 
     if 'departures' in data:
         for dep in data['departures']:
@@ -64,6 +66,7 @@ def preload_departures(site_id):
                     "datetime": dep_datetime,
                 })
 
+    print(f"Parsed Departures: {departures}")
     return sorted(departures, key=lambda x: x['datetime']), stop_deviations
 
 def get_temperature(latitude, longitude):
@@ -163,7 +166,7 @@ class RunText(SampleBase):
                     break
 
             return "   ".join(
-                [f"{d['route']} {d['destination']} {d['time']}" for d in upcoming]
+                [f"{d['route']} {d['destination']}   {d['time']}" for d in upcoming]
             ) or " "
 
         def format_deviations(deviations, max_results=4):
@@ -181,7 +184,7 @@ class RunText(SampleBase):
             graphics.DrawText(offscreen_canvas, staticFont, clock_x, 12, timeColor, timeText)
 
             # Temperature
-            temp_text = f"{current_temperature}°" if current_temperature else "–°"
+            temp_text = f"{current_temperature}°" if current_temperature else "-°"
             temp_x = 50 if len(temp_text) == 2 else 44
             graphics.DrawText(offscreen_canvas, staticFont, temp_x, 12, timeColor, temp_text)
 
@@ -219,6 +222,9 @@ class RunText(SampleBase):
                     if updated_departures:
                         departure_cache = updated_departures
                         deviation_cache = updated_deviations
+
+                    print(f"Updated Departure Cache: {departure_cache}")  # Debugging: Log updated cache
+                    print(f"Updated Deviation Cache: {deviation_cache}")
 
                     last_cache_update = time.monotonic()
 

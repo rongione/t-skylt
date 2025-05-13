@@ -9,7 +9,7 @@ class ShowText(SampleBase):
         self.matrix.brightness = 80
 
         font = graphics.Font()
-        font.LoadFont("test.bdf")
+        font.LoadFont("20x12.bdf")
 
         #color = graphics.Color(196, 46, 246) # GBR 1 ganska bra
         #color = graphics.Color(244, 64, 255)  # GBR 2 lite ljusare än 1
@@ -21,7 +21,7 @@ class ShowText(SampleBase):
         #alphabet = "f"
         # alphabet = "abcdefghijklmnopqrstuvwxyzåäö"
         # bigalphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ"
-        frame_letter = "20-19"
+        frame_letter = "x0"
         # make it draw the text in a loop
 
 
