@@ -127,7 +127,7 @@ class RunText(SampleBase):
         # Location and site ID
         latitude = 59.2636
         longitude = 18.0868
-        site_id = 9184  # Tallkrogen
+        # site_id = 9184  # Tallkrogen
 
         # Brightness settings
         day_brightness = 80
@@ -137,7 +137,10 @@ class RunText(SampleBase):
         # Temperature and cache settings
         last_temp_update = -1
         current_temperature = None
+
+        site_id = self._get_site_id()
         departure_cache, deviation_cache = preload_departures(site_id)
+
         last_cache_update = time.monotonic()
         cache_refresh_interval = 180  # Refresh every 3 minutes
 
@@ -191,6 +194,7 @@ class RunText(SampleBase):
 
                 # Refresh data if needed
                 if time.monotonic() - last_cache_update > cache_refresh_interval:
+                    site_id = self._get_site_id()
                     departure_cache, deviation_cache = preload_departures(site_id)
                     last_cache_update = time.monotonic()
 
@@ -255,6 +259,18 @@ class RunText(SampleBase):
                 break
 
         return "   ".join(upcoming) or " "
+
+    def _get_site_id(self):
+        """
+        Fetches the current site ID from the local Flask server.
+        Falls back to Tallkrogen (9184) if request fails.
+        """
+        try:
+            res = requests.get("http://localhost:8080/get-site", timeout=2)
+            return res.json().get("site_id", 9184)
+        except Exception as e:
+            print(f"Error fetching site_id from local server: {e}")
+            return 9184
 
     def _format_deviations(self, deviations, max_results=4):
         """

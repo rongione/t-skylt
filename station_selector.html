@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Station Selector</title>
+</head>
+<body>
+    <h1>Choose Metro Station</h1>
+
+    <label for="station">Station:</label>
+    <select id="station">
+        <option value="9184">Tallkrogen</option>
+        <option value="9183">Gubbängen</option>
+        <option value="9182">Hökarängen</option>
+        <option value="9287">Skärholmen</option>
+    </select>
+    <button onclick="submitStation()">Set Station</button>
+
+    <p>Current site_id: <span id="currentSiteId">Loading...</span></p>
+
+    <script>
+        async function fetchCurrentSite() {
+            const response = await fetch("/get-site");
+            const data = await response.json();
+            document.getElementById("currentSiteId").innerText = data.site_id;
+            document.getElementById("station").value = data.site_id;
+        }
+
+        async function submitStation() {
+            const siteId = document.getElementById("station").value;
+            await fetch("/set-site", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ site_id: siteId })
+            });
+            fetchCurrentSite(); // Refresh displayed site_id
+        }
+
+        fetchCurrentSite(); // Load initial state
+    </script>
+</body>
+</html>
