@@ -12,6 +12,7 @@ def preload_departures(site_id):
 
     Args:
         site_id (int): The site ID for the metro station.
+        allowed_modes (String): the allowed transport modes
 
     Returns:
         tuple: A sorted list of departures and a list of stop deviations.
@@ -127,7 +128,6 @@ class RunText(SampleBase):
         # Location and site ID
         latitude = 59.2636
         longitude = 18.0868
-        # site_id = 9184  # Tallkrogen
 
         # Brightness settings
         day_brightness = 80
@@ -138,7 +138,9 @@ class RunText(SampleBase):
         last_temp_update = -1
         current_temperature = None
 
-        site_id = self._get_site_id()
+        # site_id = self._get_site_id()
+        site_id = 9184  # Tallkrogen
+        # allowed_modes = self._get_transport_modes()
         departure_cache, deviation_cache = preload_departures(site_id)
 
         last_cache_update = time.monotonic()
@@ -194,7 +196,8 @@ class RunText(SampleBase):
 
                 # Refresh data if needed
                 if time.monotonic() - last_cache_update > cache_refresh_interval:
-                    site_id = self._get_site_id()
+                    # allowed_modes = self._get_transport_modes()
+                    # site_id = self._get_site_id()
                     departure_cache, deviation_cache = preload_departures(site_id)
                     last_cache_update = time.monotonic()
 
@@ -209,7 +212,8 @@ class RunText(SampleBase):
                         current_temperature = math.floor(temp) if temp % 1 < 0.5 else round(temp)
 
             # Adjust scroll speed
-            time.sleep(0.02 if showing_deviation else 0.03)
+            # time.sleep(0.02 if showing_deviation else 0.03)
+            time.sleep(0.02)
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
 
     def _show_loading_screen(self, canvas, font, color):
@@ -271,6 +275,18 @@ class RunText(SampleBase):
         except Exception as e:
             print(f"Error fetching site_id from local server: {e}")
             return 9184
+
+    def _get_transport_modes(self):
+        """
+        Fetches the allowed transport modes from the local Flask server.
+        Falls back to ["METRO"] if request fails.
+        """
+        try:
+            res = requests.get("http://localhost:8080/get-transport-modes", timeout=2)
+            return res.json().get("transport_modes", ["METRO"])
+        except Exception as e:
+            print(f"Error fetching transport modes from local server: {e}")
+            return ["METRO"]
 
     def _format_deviations(self, deviations, max_results=4):
         """
