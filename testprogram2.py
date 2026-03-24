@@ -24,12 +24,28 @@ class ShowText(SampleBase):
         frame_letter = "21"
         # make it draw the text in a loop
 
+        # Display temperature
+        temp_text = "-21°"
+
+        # --- Measure text width dynamically ---
+        # DrawText() returns x position immediately after the last drawn pixel
+        text_width = graphics.DrawText(canvas, font, 0, 0, white, temp_text)
+        text_width -= 0  # since we started at x=0
+
+        # --- Compute x-position for alignment ---
+        # Adjust these based on where you want the temperature to appear:
+        matrix_width = 64
+        temp_y = 12  # example vertical position
+        temp_x = matrix_width - text_width
+
+        # --- Draw temperature on matrix ---
+        graphics.DrawText(offscreen_canvas, font, temp_x, temp_y, white, temp_text)
 
         while True:
 
-            triplet = frame_letter
+            triplet = temp_text
             offscreen_canvas.Clear()
-            graphics.DrawText(offscreen_canvas, font, pos_x, pos_y, color, triplet)
+            graphics.DrawText(offscreen_canvas, font, temp_x, pos_y, color, triplet)
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
             time.sleep(2)
 

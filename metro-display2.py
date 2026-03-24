@@ -1,87 +1,30 @@
 import requests
 import math
 from samplebase import SampleBase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import time
 from rgbmatrix import graphics
 
-# Function to get upcoming METRO departures from API
-def preload_departures(site_id):
-    """
-    Fetches upcoming departures from the SL API for a given site ID.
-
-    Args:
-        site_id (int): The site ID for the metro station.
-        allowed_modes (String): the allowed transport modes
-
-    Returns:
-        tuple: A sorted list of departures and a list of stop deviations.
-    """
-    url = f"https://transport.integration.sl.se/v1/sites/{site_id}/departures"
+def get_departures_from_cloud():
+    url = "serverurl"
     try:
         res = requests.get(url, timeout=5)
         res.raise_for_status()
         data = res.json()
-        print(f"API Response: {data}")  # Debugging: Log raw API response
+        return (
+            data.get("departures", []),
+            data.get("deviations", []),
+            data.get("site_id", 9184),  # Default to Tallkrogen
+            data.get("transport_modes", ["METRO"])  # Default to metro
+        )
     except Exception as e:
-        print(f"Error fetching departures: {e}")
-        return [], []
-
-    departures = []
-    now = datetime.now() + timedelta(hours=1)
-
-    # Extract stop-level deviations
-    stop_deviations = [d["message"] for d in data.get("stop_deviations", [])]
-    print(f"Stop Deviations: {stop_deviations}")
-
-    if 'departures' in data:
-        for dep in data['departures']:
-            line = dep.get("line", {}).get("designation", "–")
-            destination = dep.get("destination", "–")
-            display_time = dep.get("display", "–")
-            state = dep.get("state", "")
-            transport_mode = dep.get("line", {}).get("transport_mode", "–")
-
-            # Filter out non-metro and cancelled departures
-            is_cancelled = state == "CANCELLED" or display_time.lower() == "inställt"
-            if is_cancelled or line == "903":
-                continue
-
-            # Parse departure time
-            if display_time == "Nu":
-                minutes_until = 0
-                dep_datetime = now
-            elif "min" in display_time:
-                minutes_until = int(display_time.split()[0])
-                dep_datetime = now + timedelta(minutes=minutes_until)
-            elif display_time != "–":
-                try:
-                    dep_time_today = datetime.strptime(display_time, "%H:%M")
-                    dep_datetime = now.replace(hour=dep_time_today.hour, minute=dep_time_today.minute,
-                                               second=0, microsecond=0)
-                    if dep_datetime < now:
-                        dep_datetime += timedelta(days=1)
-                    minutes_until = int((dep_datetime - now).total_seconds() // 60)
-                except ValueError:
-                    continue
-            else:
-                continue
-
-            if minutes_until > 0:
-                departures.append({
-                    "route": line,
-                    "destination": destination,
-                    "minutes": minutes_until,
-                    "datetime": dep_datetime,
-                })
-
-    print(f"Parsed Departures: {departures}")
-    return sorted(departures, key=lambda x: x['datetime']), stop_deviations
-
+        print(f"Error getting data from cloud: {e}")
+        return [], [], 9184, ["METRO"]
 
 def get_temperature(latitude, longitude):
     """
-    Fetches the current temperature for a given latitude and longitude.
+    Fetches the current temperature for a given latitude and longitude from the server.
 
     Args:
         latitude (float): Latitude of the location.
@@ -90,22 +33,19 @@ def get_temperature(latitude, longitude):
     Returns:
         float or None: The current temperature in Celsius, or None if an error occurs.
     """
-    url = "https://api.open-meteo.com/v1/forecast"
+    url = "serverurl"
     params = {
         "latitude": latitude,
-        "longitude": longitude,
-        "current": "temperature_2m",
-        "timezone": "auto"
+        "longitude": longitude
     }
     try:
         response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
         data = response.json()
-        return data["current"]["temperature_2m"]
+        return data.get("temperature")
     except Exception as e:
-        print(f"Error fetching temperature: {e}")
+        print(f"Error fetching temperature from server: {e}")
         return None
-
 
 class RunText(SampleBase):
     """
@@ -119,13 +59,13 @@ class RunText(SampleBase):
 
         # Fonts and colors
         font = graphics.Font()
-        font.LoadFont("/home/ivorongione/rpi-rgb-led-matrix/bindings/python/samples/test.bdf")
+        font.LoadFont("/path/to/your/font.bdf")
         staticFont = graphics.Font()
-        staticFont.LoadFont("/home/ivorongione/rpi-rgb-led-matrix/bindings/python/samples/test.bdf")
+        staticFont.LoadFont("/path/to/your/font.bdf")
         textColor = graphics.Color(135, 20, 216)
         timeColor = graphics.Color(135, 20, 216)
 
-        # Location and site ID
+        # lat, long for Tallkrogen
         latitude = 59.2636
         longitude = 18.0868
 
@@ -136,15 +76,15 @@ class RunText(SampleBase):
 
         # Temperature and cache settings
         last_temp_update = -1
-        current_temperature = None
 
-        # site_id = self._get_site_id()
-        site_id = 9184  # Tallkrogen
-        # allowed_modes = self._get_transport_modes()
-        departure_cache, deviation_cache = preload_departures(site_id)
+        temp = get_temperature(latitude, longitude)
+        if temp is not None:
+            current_temperature = math.floor(temp) if temp % 1 < 0.5 else round(temp)
+        departure_cache, deviation_cache, site_id, allowed_modes = get_departures_from_cloud()
+        print("Departure cache after fetching:", departure_cache)  # Debug print
 
         last_cache_update = time.monotonic()
-        cache_refresh_interval = 180  # Refresh every 3 minutes
+        cache_refresh_interval = 120  # Refresh every 2 minutes
 
         # Loading screen
         self._show_loading_screen(offscreen_canvas, font, textColor)
@@ -158,16 +98,19 @@ class RunText(SampleBase):
             offscreen_canvas.Clear()
 
             # Display clock
-            now = datetime.now() + timedelta(hours=1)
+            now = datetime.now(ZoneInfo("Europe/Stockholm"))
             timeText = now.strftime("%H:%M")
             graphics.DrawText(offscreen_canvas, staticFont, 0, 12, timeColor, timeText)
 
             # Display temperature
-            temp_text = f"{current_temperature}°" if current_temperature else "-°"
-            temp_x = 50 if len(temp_text) == 2 else 44
+            temp_text = f"{current_temperature}°" if current_temperature != None else "-°"
 
-            if temp_text[0] == "2" and temp_text[1] != "1":
-                temp_x = 42
+            # Räkna ut horisontell position
+            text_width = graphics.DrawText(offscreen_canvas, font, 0, 0, timeColor, temp_text)
+            text_width -= 0  # since we started at x=0
+
+            matrix_width = 64
+            temp_x = matrix_width - text_width
 
             graphics.DrawText(offscreen_canvas, staticFont, temp_x, 12, timeColor, temp_text)
 
@@ -196,23 +139,20 @@ class RunText(SampleBase):
 
                 # Refresh data if needed
                 if time.monotonic() - last_cache_update > cache_refresh_interval:
-                    # allowed_modes = self._get_transport_modes()
-                    # site_id = self._get_site_id()
-                    departure_cache, deviation_cache = preload_departures(site_id)
+                    departure_cache, deviation_cache, site_id, allowed_modes = get_departures_from_cloud()
+                    temp = get_temperature(latitude, longitude)
+                    if temp is not None:
+                        current_temperature = math.floor(temp) if temp % 1 < 0.5 else round(temp)
                     last_cache_update = time.monotonic()
 
                 # Update brightness and temperature
                 current_hour = datetime.now().hour + 1
                 if current_hour != last_checked_hour:
                     last_checked_hour = current_hour
-                    target_brightness = night_brightness if (23 <= current_hour or current_hour < 7) else day_brightness
+                    target_brightness = night_brightness if (22 <= current_hour or current_hour < 7) else day_brightness
                     self.matrix.brightness = target_brightness
-                    temp = get_temperature(latitude, longitude)
-                    if temp is not None:
-                        current_temperature = math.floor(temp) if temp % 1 < 0.5 else round(temp)
 
             # Adjust scroll speed
-            # time.sleep(0.02 if showing_deviation else 0.03)
             time.sleep(0.02)
             offscreen_canvas = self.matrix.SwapOnVSync(offscreen_canvas)
 
@@ -251,42 +191,37 @@ class RunText(SampleBase):
         Returns:
             str: Formatted departure text.
         """
-        now = datetime.now() + timedelta(hours=1)
+        now = datetime.now(timezone.utc)
         upcoming = []
 
         for d in departures:
-            minutes_left = math.ceil((d["datetime"] - now).total_seconds() / 60)
-            if minutes_left > 0:
-                time_display = f"{minutes_left} min" if minutes_left < 30 else d["datetime"].strftime("%H:%M")
+            try:
+                # Ensure the datetime field exists and is valid
+                dep_time = datetime.fromisoformat(d["datetime"]).replace(
+                    tzinfo=timezone.utc
+                )
+            except (ValueError, KeyError) as e:
+                continue
+
+            # Calculate time left until departure
+            seconds_left = (dep_time - now).total_seconds()
+
+            # Allow 30 seconds tolerance to prevent flicker
+            if seconds_left > -30:
+                minutes_left = max(0, math.ceil(seconds_left / 60))
+
+                time_display = (
+                    f"{minutes_left} min"
+                    if minutes_left < 30
+                    else dep_time.strftime("%H:%M")
+                )
+
                 upcoming.append(f"{d['route']} {d['destination']} {time_display}")
+
             if len(upcoming) >= max_results:
                 break
 
         return "   ".join(upcoming) or " "
-
-    def _get_site_id(self):
-        """
-        Fetches the current site ID from the local Flask server.
-        Falls back to Tallkrogen (9184) if request fails.
-        """
-        try:
-            res = requests.get("http://localhost:8080/get-site", timeout=2)
-            return res.json().get("site_id", 9184)
-        except Exception as e:
-            print(f"Error fetching site_id from local server: {e}")
-            return 9184
-
-    def _get_transport_modes(self):
-        """
-        Fetches the allowed transport modes from the local Flask server.
-        Falls back to ["METRO"] if request fails.
-        """
-        try:
-            res = requests.get("http://localhost:8080/get-transport-modes", timeout=2)
-            return res.json().get("transport_modes", ["METRO"])
-        except Exception as e:
-            print(f"Error fetching transport modes from local server: {e}")
-            return ["METRO"]
 
     def _format_deviations(self, deviations, max_results=4):
         """
